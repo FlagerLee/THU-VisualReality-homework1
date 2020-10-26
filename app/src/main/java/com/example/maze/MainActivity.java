@@ -5,6 +5,9 @@ import android.util.Log;
 
 import android.opengl.GLES30;
 import android.opengl.Matrix;
+import android.opengl.GLSurfaceView;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
 
 import com.google.vr.sdk.base.AndroidCompat;
 import com.google.vr.sdk.base.Eye;
@@ -16,6 +19,7 @@ import com.google.vr.sdk.base.Viewport;
 import java.io.IOException;
 
 import javax.microedition.khronos.egl.EGLConfig;
+import javax.microedition.khronos.opengles.GL10;
 
 public class MainActivity extends GvrActivity implements GvrView.StereoRenderer {
     private static final String[] OBJECT_VERTEX_SHADER_CODE =
@@ -58,9 +62,13 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer 
                     "  // gl_FragColor = vec4(lightIntensity, 1.0);",
                     "}",
             };
-    private int eyeX = 1, eyeY = 10, eyeZ = 0;
+    private int positionX = 1, positionY = 10;
+    private float eyeX = 1, eyeY = 10, eyeZ = 0;
+    private float deltaEyeX = (float)0.0, deltaEyeY = (float)0.0;
+    int movingTimes = 0;
     private float centerX = (float)2.0, centerY = (float)10.0, centerZ = (float)0.0;
-    private int forward = 0;
+
+    private boolean isMoving = false;
 
     private static final float Z_NEAR = 0.01f;
     private static final float Z_FAR = 10000.0f;
@@ -177,6 +185,17 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer 
 
     @Override
     public void onDrawEye(Eye eye) {
+        if(isMoving) {
+            if(movingTimes == 100) {
+                isMoving = false;
+                movingTimes = 0;
+                deltaEyeX = (float)0.0;
+                deltaEyeY = (float)0.0;
+            }
+            movingTimes ++;
+        }
+        eyeX += deltaEyeX;
+        eyeY += deltaEyeY;
         // Redraw background color
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT | GLES30.GL_DEPTH_BUFFER_BIT);
 
@@ -221,11 +240,12 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer 
             roomTex.bind();
             room.draw();
         }
+
     }
 
     @Override
     public void onNewFrame(HeadTransform headTransform) {
-        Matrix.setLookAtM(viewMatrix, 0, (float)eyeX, (float)eyeY, (float)eyeZ, centerX, centerY, centerZ, 0.0f, 0.0f, -1.0f);
+        Matrix.setLookAtM(viewMatrix, 0, eyeX , eyeY, eyeZ, eyeX + 1, eyeY, eyeZ, 0.0f, 0.0f, -1.0f);
     }
 
     @Override
@@ -240,21 +260,35 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer 
 
     @Override
     public void onCardboardTrigger() {
+        if(isMoving) return;
         float Zx = -DebugEyeMatrix[8], Zy = -DebugEyeMatrix[9], Zz = -DebugEyeMatrix[10];
         if(Zx > 0.90) {
-            if(maze[eyeX][eyeY - 1] == 0) eyeY -= 1;
+            if(maze[positionX][positionY - 1] == 0) { //eyeY -= 1;
+                deltaEyeY = (float) -0.01;
+                positionY -= 1;
+            }
         }
         else if(Zx < -0.90) {
-            if(maze[eyeX][eyeY + 1] == 0) eyeY += 1;
+            if(maze[positionX][positionY + 1] == 0) { //eyeY += 1;
+                deltaEyeY = (float) 0.01;
+                positionY += 1;
+            }
         }
         else if(Zz > 0.90) {
-            if(maze[eyeX - 1][eyeY] == 0) eyeX -= 1;
+            if(maze[positionX - 1][positionY] == 0) { //eyeX -= 1;
+                deltaEyeX = (float) -0.01;
+                positionX -= 1;
+            }
         }
         else if(Zz < -0.90) {
-            if(maze[eyeX + 1][eyeY] == 0) eyeX += 1;
+            if(maze[positionX + 1][positionY] == 0) { //eyeX += 1;
+                deltaEyeX = (float) 0.01;
+                positionX += 1;
+            }
         }
-        centerX = (float)eyeX + (float)1.0;
-        centerY = (float)eyeY;
+        centerX = eyeX + (float)2.0;
+        centerY = eyeY;
+        isMoving = true;
         Log.i("EyeMatrix", getFloatString(DebugEyeMatrix) + eyeX + " " + eyeY + " " + eyeZ + "\n");
     }
 
