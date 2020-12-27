@@ -1,5 +1,9 @@
 package com.example.maze;
 
+import android.content.Intent;
+import android.media.AudioFormat;
+import android.media.AudioManager;
+import android.media.AudioTrack;
 import android.os.Bundle;
 import android.util.Log;
 
@@ -17,6 +21,7 @@ import com.google.vr.sdk.base.HeadTransform;
 import com.google.vr.sdk.base.Viewport;
 
 import java.io.IOException;
+import java.util.Random;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
@@ -63,6 +68,8 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer 
                     "}",
             };
     private int positionX = 1, positionY = 10;
+    private int soundX, soundY;
+    private Random randomGenerator;
     private float eyeX = 1, eyeY = 10, eyeZ = 0;
     private float deltaEyeX = (float)0.0, deltaEyeY = (float)0.0;
     int movingTimes = 0;
@@ -100,11 +107,49 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer 
 
     private float[] DebugEyeMatrix = new float[16];
 
+    private HRTFData hrtfData;
+    private AudioTrack audioTrack;
+    private AudioPlayer audioPlayer;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         initializeGvrView();
+        audioPlayer = new AudioPlayer(MainActivity.this, "hrir.out", "nokia.wav");
+        Log.i("test", "Finish Initialize");
+        randomGenerator = new Random();
+        getRandomSoundOrigin();
+        audioPlayer.recyclePlay();
+    }
+
+    public void getRandomSoundOrigin() {
+        soundX = randomGenerator.nextInt(12);
+        soundY = randomGenerator.nextInt(12);
+        if(maze[soundX][soundY] == 1) {
+            if(soundX > 0 && soundY > 0) {
+                if(maze[soundX - 1][soundY] == 0) {
+                    soundX --;
+                } else if(maze[soundX][soundY - 1] == 0) {
+                    soundY --;
+                } else if(maze[soundX - 1][soundY - 1] == 0) {
+                    soundX --; soundY --;
+                } else if(soundY < 11 && maze[soundX - 1][soundY + 1] == 0) {
+                    soundX --; soundY ++;
+                } else if(soundX < 11 && maze[soundX + 1][soundY - 1] == 0) {
+                    soundX ++; soundY --;
+                }
+            }
+            if(soundX < 11 && soundY < 11) {
+                if(maze[soundX + 1][soundY] == 0) {
+                    soundX ++;
+                } else if(maze[soundX][soundY + 1] == 0) {
+                    soundY ++;
+                } else if(maze[soundX + 1][soundY + 1] == 0) {
+                    soundX ++; soundY ++;
+                }
+            }
+        }
     }
 
     public void initializeGvrView() {
@@ -191,6 +236,8 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer 
                 movingTimes = 0;
                 deltaEyeX = (float)0.0;
                 deltaEyeY = (float)0.0;
+                while(soundX == positionX && soundY == positionY) getRandomSoundOrigin();
+                audioPlayer.recyclePlay();
             }
             movingTimes ++;
         }
@@ -246,6 +293,42 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer 
     @Override
     public void onNewFrame(HeadTransform headTransform) {
         Matrix.setLookAtM(viewMatrix, 0, eyeX , eyeY, eyeZ, eyeX + 1, eyeY, eyeZ, 0.0f, 0.0f, -1.0f);
+        float []musicPos = new float[3];
+        float []forward = new float[3];
+        float []up = new float[3];
+        float []right = new float[3];
+        float []pe = new float[3];
+        float []pa = new float[3];
+        float []pDirection = new float[3];
+        //calculate music angle
+        musicPos[0] = 10.0f;
+        musicPos[1] = 1.0f;
+        musicPos[2] = 0.0f;
+        float L = (float)Math.sqrt(musicPos[0] * musicPos[0] + musicPos[1] * musicPos[1]);
+        headTransform.getForwardVector(forward, 0);
+        headTransform.getUpVector(up, 0);
+        headTransform.getRightVector(right, 0);
+        float d = -(right[0] * eyeX + right[1] * eyeY + right[2] * eyeZ);
+        pe[0] = ((right[1] * right[1] + right[2] * right[2]) * musicPos[0] - right[0] * (right[1] * musicPos[1] + right[2] * musicPos[2] + d))/(right[0] * right[0] + right[1] * right[1] + right[2] * right[2]);
+        pe[1] = ((right[0] * right[0] + right[2] * right[2]) * musicPos[1] - right[1] * (right[0] * musicPos[0] + right[2] * musicPos[2] + d))/(right[0] * right[0] + right[1] * right[1] + right[2] * right[2]);
+        pe[2] = ((right[0] * right[0] + right[1] * right[1]) * musicPos[2] - right[2] * (right[0] * musicPos[0] + right[1] * musicPos[1] + d))/(right[0] * right[0] + right[1] * right[1] + right[2] * right[2]);
+        pDirection[0] = pe[0] - eyeX;
+        pDirection[1] = pe[1] - eyeY;
+        pDirection[2] = pe[2] - eyeZ;
+        float elevation = (float)Math.toDegrees(Math.acos((pDirection[0] * forward[0] + pDirection[1] * forward[1] + pDirection[2] * forward[2]) / Math.sqrt(pDirection[0] * pDirection[0] + pDirection[1] * pDirection[1] + pDirection[2] * pDirection[2]) / Math.sqrt(forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2])));
+
+        d = -(up[0] * eyeX + up[1] * eyeY + up[2] * eyeZ);
+        pa[0] =((up[1] * up[1] + up[2] * up[2]) * musicPos[0] - up[0] * (up[1] * musicPos[1] + up[2] * musicPos[2] + d)) / (up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
+        pa[1] =((up[0] * up[0] + up[2] * up[2]) * musicPos[1] - up[1] * (up[0] * musicPos[0] + up[2] * musicPos[2] + d)) / (up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
+        pa[2] =((up[0] * up[0] + up[1] * up[1]) * musicPos[2] - up[2] * (up[0] * musicPos[0] + up[1] * musicPos[1] + d)) / (up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
+        pDirection[0] = pa[0] - eyeX;
+        pDirection[1] = pa[1] - eyeY;
+        pDirection[2] = pa[2] - eyeZ;
+        float azimut = (float)Math.toDegrees(Math.acos((pDirection[0] * right[0] + pDirection[1] * right[1] + pDirection[2] * right[2]) / Math.sqrt(pDirection[0] * pDirection[0] + pDirection[1] * pDirection[1] + pDirection[2] * pDirection[2]) / Math.sqrt(right[0] * right[0] + right[1] * right[1] + right[2] * right[2])));
+
+        //Log.i("onNewFrame", "azimut: " + azimut + "; elevation: " + elevation);
+        audioPlayer.updateAngle(azimut, elevation);
+
     }
 
     @Override
